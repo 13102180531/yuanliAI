@@ -1,6 +1,7 @@
 import React, { useEffect, useCallback, useRef } from 'react';
 import { useProjectStore } from '../stores/useProjectStore';
 import { useWorkflowStore } from '../stores/useCanvasStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { toast } from 'sonner';
 import { normalizeEntities, normalizeStoryboard } from '../lib/scriptUtils';
 
@@ -187,14 +188,26 @@ export const useGenerationSocket = () => {
       return;
     }
 
+    // Get API config from settings store
+    const { apiProviders, activeProviderId, defaultModels } = useSettingsStore.getState();
+    const activeProvider = apiProviders.find(p => p.id === activeProviderId);
+    const apiKey = activeProvider?.apiKey || '';
+    const baseUrl = activeProvider?.baseUrl || '';
+    const modelName = defaultModels.textExtraction || '';
+
+    if (!apiKey) {
+      toast.error("请先在前端设置中配置 API Key");
+      setGlobalLoading(false);
+      return;
+    }
+
     setGlobalLoading(true, "深层语言模型正在解析剧本结构...");
-    
+
     try {
       socketRef.current.send(JSON.stringify({
         action: 'PARSE_SCRIPT',
-        payload: { scriptContent, projectId }
+        payload: { scriptContent, projectId, apiKey, baseUrl, modelName }
       }));
-      // ... 原逻辑不变 ...
     } catch (err) {
       setGlobalLoading(false);
       toast.error("请求发送失败，请重试");

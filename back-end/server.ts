@@ -59,7 +59,9 @@ const ScriptState = Annotation.Root({
   props: Annotation<any[]>(),
   storyboard: Annotation<any[]>(),
   error: Annotation<string | null>(),
-  apiKey: Annotation<string | null>(), // Add apiKey to state
+  apiKey: Annotation<string | null>(),
+  baseUrl: Annotation<string | null>(),
+  modelName: Annotation<string | null>(),
 });
 
 async function startServer() {
@@ -347,40 +349,57 @@ async function startServer() {
     }
   });
 
-  // Helper to handle AI interaction
-  const safeGenerateContent = async (prompt: string, schema?: Schema, apiKey?: string | null, maxRetries = 3) => {
-    // Using a more stable and powerful model for structured output
-    const MODEL_NAME = "gemini-3.1-flash-lite-preview";
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
-    
-    // Choose the best key
-    const effectiveKey = (apiKey || process.env.GEMINI_API_KEY || "key").trim();
-    
+  // Helper to handle AI interaction via OpenAI-compatible API
+  const safeGenerateContent = async (
+    prompt: string,
+    schema?: Schema,
+    apiKey?: string | null,
+    baseUrl?: string | null,
+    modelName?: string | null,
+    maxRetries = 3
+  ) => {
+    const effectiveBaseUrl = (baseUrl || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").trim().replace(/\/$/, '');
+    const effectiveKey = (apiKey || process.env.OPENAI_API_KEY || "key").trim();
+    const effectiveModel = (modelName || process.env.OPENAI_MODEL || "gpt-4o-mini").trim();
+    const API_URL = `${effectiveBaseUrl}/chat/completions`;
+
+    // Build system prompt for JSON output when schema is provided
+    let systemPrompt = "You are a helpful assistant.";
+    if (schema) {
+      systemPrompt = `You are a helpful assistant. You must respond with valid JSON that conforms to the following schema:\n${JSON.stringify(schema, null, 2)}\nDo not include markdown code blocks, only pure JSON.`;
+    }
+
     // Set up dispatcher for undici proxy agent
     const dispatcher = process.env.https_proxy ? new ProxyAgent(process.env.https_proxy) : undefined;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        logToFile(`[AI] Calling ${API_URL} (Attempt ${attempt + 1})...`);
-        
-        // Add 120s timeout protection
+        logToFile(`[AI] Calling ${API_URL} model=${effectiveModel} (Attempt ${attempt + 1})...`);
+
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds
+        const timeoutId = setTimeout(() => controller.abort(), 120000);
 
         try {
+          const body: any = {
+            model: effectiveModel,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.7,
+          };
+
+          if (schema) {
+            body.response_format = { type: "json_object" };
+          }
+
           const response = await undiciFetch(API_URL, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-goog-api-key': effectiveKey
+              'Authorization': `Bearer ${effectiveKey}`
             },
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ text: prompt }] }],
-              generationConfig: { 
-                responseMimeType: "application/json",
-                responseSchema: schema
-              }
-            }),
+            body: JSON.stringify(body),
             dispatcher: dispatcher,
             signal: controller.signal
           });
@@ -388,22 +407,23 @@ async function startServer() {
           clearTimeout(timeoutId);
 
           if (!response.ok) {
-            throw new Error(`API error: ${response.status} ${await response.text()}`);
+            const errorText = await response.text();
+            logToFile(`[AI ERROR] ${response.status}: ${errorText}`);
+            throw new Error(`API error: ${response.status} ${errorText}`);
           }
 
-          const data = await response.json();
-          // @ts-ignore
-          const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          
+          const data: any = await response.json();
+          const content = data.choices?.[0]?.message?.content;
+
           if (!content) {
             logToFile(`[AI] ${API_URL} returned empty content.`);
             throw new Error("Empty response from AI");
           }
-          
+
           // Strip markdown code blocks if present
           const cleanedContent = content.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-          
-          logToFile(`[AI] ${MODEL_NAME} response received (${cleanedContent.length} chars)`);
+
+          logToFile(`[AI] ${effectiveModel} response received (${cleanedContent.length} chars)`);
           return { text: cleanedContent };
         } catch (fetchError: any) {
           clearTimeout(timeoutId);
@@ -459,7 +479,7 @@ async function startServer() {
         }
       };
 
-      const response = await safeGenerateContent(prompt, schema, state.apiKey);
+      const response = await safeGenerateContent(prompt, schema, state.apiKey, state.baseUrl, state.modelName);
       const rawData = JSON.parse(response.text || "{\"characters\":[], \"suggestedTitle\": \"Untitled\"}");
       
       const charactersMap: Record<string, any[]> = {};
@@ -515,7 +535,7 @@ async function startServer() {
         }
       };
 
-      const response = await safeGenerateContent(prompt, schema, state.apiKey);
+      const response = await safeGenerateContent(prompt, schema, state.apiKey, state.baseUrl, state.modelName);
       const rawData = JSON.parse(response.text || "{\"scenes\":[]}");
       
       const scenesMap: Record<string, any[]> = {};
@@ -572,7 +592,7 @@ async function startServer() {
         }
       };
 
-      const response = await safeGenerateContent(prompt, schema, state.apiKey);
+      const response = await safeGenerateContent(prompt, schema, state.apiKey, state.baseUrl, state.modelName);
       const rawData = JSON.parse(response.text || "{\"props\":[]}");
       
       const propsMap: Record<string, any[]> = {};
@@ -690,7 +710,7 @@ async function startServer() {
         required: ["storyboard"]
       };
 
-      const response = await safeGenerateContent(prompt, schema, state.apiKey);
+      const response = await safeGenerateContent(prompt, schema, state.apiKey, state.baseUrl, state.modelName);
       const data = JSON.parse(response.text || "{\"storyboard\":[]}");
       
       return { storyboard: data.storyboard || [] };
@@ -743,20 +763,22 @@ async function startServer() {
         
         // 1. Handle Script Parsing via WebSocket
         if (action === "PARSE_SCRIPT") {
-          const { scriptContent, projectId, apiKey: payloadApiKey } = payload;
+          const { scriptContent, projectId, apiKey: payloadApiKey, baseUrl: payloadBaseUrl, modelName: payloadModelName } = payload;
           const taskId = `task_ws_${Date.now()}`;
           const finalApiKey = payloadApiKey || wsApiKey;
-          
-          logToFile(`[WS TASK] Starting script parse for task: ${taskId}. Key source: ${payloadApiKey ? 'payload' : (wsApiKey ? 'handshake' : 'env')}`);
-          
+          const finalBaseUrl = payloadBaseUrl || process.env.OPENAI_BASE_URL || null;
+          const finalModelName = payloadModelName || process.env.OPENAI_MODEL || null;
+
+          logToFile(`[WS TASK] Starting script parse for task: ${taskId}. Key source: ${payloadApiKey ? 'payload' : (wsApiKey ? 'handshake' : 'env')}, baseUrl: ${finalBaseUrl}, model: ${finalModelName}`);
+
           // Send ACK
           pushToFrontend(ws, "ACK", { status: "ok", taskId });
-          
+
             // Run processing in background
           (async () => {
             try {
               logToFile(`[WS TASK] Running extraction nodes in parallel...`);
-              const initialState = { scriptContent, apiKey: finalApiKey } as any;
+              const initialState = { scriptContent, apiKey: finalApiKey, baseUrl: finalBaseUrl, modelName: finalModelName } as any;
               
               // Start heartbeat
               const heartbeat = setInterval(() => {
@@ -781,6 +803,8 @@ async function startServer() {
               const storyboardRes = await generateStoryboardNode({
                 scriptContent,
                 apiKey: finalApiKey,
+                baseUrl: finalBaseUrl,
+                modelName: finalModelName,
                 suggestedTitle: charRes.suggestedTitle,
                 characters: charRes.characters,
                 scenes: sceneRes.scenes,
@@ -859,9 +883,9 @@ async function startServer() {
 
   app.post("/api/v1/script/parse", async (req, res) => {
     logToFile("[API] Received POST /api/v1/script/parse");
-    const { scriptContent, clientId } = req.body;
+    const { scriptContent, clientId, baseUrl: reqBaseUrl, modelName: reqModelName } = req.body;
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader?.startsWith("Bearer ")) {
       logToFile("[API ERROR] 401 Unauthorized - Missing or invalid Bearer token");
       return res.status(401).json({ error: "Unauthorized" });
@@ -869,8 +893,10 @@ async function startServer() {
 
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const apiKeyFromHeader = authHeader.substring(7);
-    logToFile(`[API] Task accepted: ${taskId}. Key from header used.`);
-    
+    const finalBaseUrl = reqBaseUrl || process.env.OPENAI_BASE_URL || null;
+    const finalModelName = reqModelName || process.env.OPENAI_MODEL || null;
+    logToFile(`[API] Task accepted: ${taskId}. baseUrl: ${finalBaseUrl}, model: ${finalModelName}`);
+
     // Return success immediately to avoid HTTP timeout
     res.json({ status: "accepted", taskId });
 
@@ -883,13 +909,13 @@ async function startServer() {
     (async () => {
       try {
         logToFile(`[TASK] Starting background script parsing for task: ${taskId}`);
-        
+
         // Parallelize character/scene/prop extraction to save time
         logToFile("[TASK] Running extraction nodes in parallel...");
         const [charRes, sceneRes, propRes] = await Promise.all([
-          extractCharactersNode({ scriptContent } as any),
-          extractScenesNode({ scriptContent } as any),
-          extractPropsNode({ scriptContent } as any)
+          extractCharactersNode({ scriptContent, apiKey: apiKeyFromHeader, baseUrl: finalBaseUrl, modelName: finalModelName } as any),
+          extractScenesNode({ scriptContent, apiKey: apiKeyFromHeader, baseUrl: finalBaseUrl, modelName: finalModelName } as any),
+          extractPropsNode({ scriptContent, apiKey: apiKeyFromHeader, baseUrl: finalBaseUrl, modelName: finalModelName } as any)
         ]);
 
         if (charRes.error || sceneRes.error || propRes.error) {
@@ -897,10 +923,13 @@ async function startServer() {
         }
 
         logToFile("[TASK] Parallel extraction complete. Starting storyboard generation...");
-        
+
         // Final storyboard node follows
         const storyboardRes = await generateStoryboardNode({
           scriptContent,
+          apiKey: apiKeyFromHeader,
+          baseUrl: finalBaseUrl,
+          modelName: finalModelName,
           suggestedTitle: charRes.suggestedTitle,
           characters: charRes.characters,
           scenes: sceneRes.scenes,
