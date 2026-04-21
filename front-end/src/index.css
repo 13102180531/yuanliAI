@@ -1,0 +1,148 @@
+@import "tailwindcss";
+@import 'reactflow/dist/style.css';
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: "Inter", sans-serif;
+    --font-sans: "Inter", sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+    
+    --color-background: #080808;
+    --color-foreground: #e0e0e0;
+    
+    --color-card: #121212;
+    --color-card-foreground: #e0e0e0;
+    
+    --color-popover: #121212;
+    --color-popover-foreground: #e0e0e0;
+    
+    --color-primary: #00f0ff;
+    --color-primary-foreground: #080808;
+    
+    --color-secondary: #2a2a2a;
+    --color-secondary-foreground: #e0e0e0;
+    
+    --color-muted: #1a1a1a;
+    --color-muted-foreground: #707070;
+    
+    --color-accent: #00f0ff;
+    --color-accent-foreground: #080808;
+    
+    --color-destructive: #ff3e3e;
+    --color-destructive-foreground: #e0e0e0;
+    
+    --color-border: #2a2a2a;
+    --color-input: #2a2a2a;
+    --color-ring: #00f0ff;
+    
+    --radius: 2px;
+}
+
+:root {
+    --background: #080808;
+    --foreground: #e0e0e0;
+    --card: #121212;
+    --card-foreground: #e0e0e0;
+    --popover: #121212;
+    --popover-foreground: #e0e0e0;
+    --primary: #00f0ff;
+    --primary-foreground: #080808;
+    --secondary: #2a2a2a;
+    --secondary-foreground: #e0e0e0;
+    --muted: #1a1a1a;
+    --muted-foreground: #707070;
+    --accent: #00f0ff;
+    --accent-foreground: #080808;
+    --destructive: #ff3e3e;
+    --border: #2a2a2a;
+    --input: #2a2a2a;
+    --ring: #00f0ff;
+    --radius: 2px;
+}
+
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+.theme-night {
+    --background: #0a0a0c;
+    --card: #151518;
+    --popover: #151518;
+    --secondary: #222226;
+}
+
+.theme-pink {
+    --background: #1a0f18;
+    --card: #2d1b2a;
+    --popover: #2d1b2a;
+    --primary: #ff85c0;
+    --secondary: #4a2d48;
+}
+
+.theme-dark {
+    --background: #080808;
+    --card: #121212;
+    --popover: #121212;
+    --primary: #00f0ff;
+    --secondary: #2a2a2a;
+}
+
+.theme-light {
+    --background: #f5f5f5;
+    --foreground: #1a1a1a;
+    --card: #ffffff;
+    --popover: #ffffff;
+    --primary: #007bff;
+    --secondary: #e5e7eb;
+    --card-foreground: #1a1a1a;
+}
+
+.font-mono {
+  font-family: "JetBrains Mono", monospace;
+}
+
+.scroll-area {
+  @apply overflow-y-auto;
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a2a transparent;
+}
+
+.scroll-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scroll-area::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.scroll-area::-webkit-scrollbar-thumb {
+  @apply bg-secondary border-none;
+}
+
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  @apply bg-secondary/80;
+}
+
+/* Custom components from design */
+.success-dot {
+  @apply w-1.5 h-1.5 rounded-full bg-[#00ff66];
+  box-shadow: 0 0 8px #00ff66;
+}
+
+@keyframes progress-scan {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-progress {
+  animation: progress-scan 2s linear infinite;
+}

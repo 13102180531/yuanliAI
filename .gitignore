@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+build/
+dist/
+coverage/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code
+.claude/
+
+# Test reference files (design mockups, not part of the project)
+test.png
+test1.png
+test2.png
+test.txt
+
+# Development notes (not for open source)
+AUTH_CHANGES_SUMMARY.md
+AUTH_SETUP.md
+AUTH_TEST_GUIDE.md
+DB_MIGRATION_FIX.md
+QUICK_START.md
+CLAUDE.md
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp

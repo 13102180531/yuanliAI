@@ -1,0 +1,6 @@
+{
+  "name": "AI 剧本可视化引擎",
+  "description": "影视/动画工业级 AIGC 工作流 Web 应用，实现剧本解析、资产管理、分镜生成与进度同步。",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
